@@ -1,0 +1,5 @@
+Pillow==11.1.0
+Requests==2.32.3
+selenium==4.30.0
+streamlit==1.44.1
+webdriver_manager==4.0.2
