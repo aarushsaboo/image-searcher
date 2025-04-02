@@ -28,7 +28,8 @@ def get_webdriver_options():
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--window-size=1920,1080")
-    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36")
+    # Use a more recent user agent
+    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
     return chrome_options
 
 def search_pixabay(query):
@@ -48,16 +49,45 @@ def search_pixabay(query):
         # Wait for the page to load
         time.sleep(5)
         
-        # Find image elements
-        img_elements = driver.find_elements(By.CSS_SELECTOR, ".image_list img")
+        # Debug to see what's on the page
+        st.write("Page title:", driver.title)
+        
+        # Try multiple selector patterns to find images
+        selectors = [
+            "div.container--wYO8e div.images--0AI\\+S a img",  # First selector you provided
+            "div.container--wYO8e div.results--mB75j div a img",  # Second selector you provided
+            ".flex-grid a picture img",  # Another possible pattern
+            "img.photo-result__image",   # Another possible pattern
+            "a[href*='/images/'] img",   # All images within links to image pages
+            "img[src*='pixabay.com']",   # All images from pixabay domain
+            "img"                         # Fallback: all images
+        ]
         
         image_urls = []
-        for img in img_elements:
-            src = img.get_attribute("src")
-            if src and src.startswith("https://"):
-                # For Pixabay, try to get higher resolution images
-                # Replace the preview URL with the larger image URL
-                image_urls.append(src)
+        
+        for selector in selectors:
+            try:
+                elements = driver.find_elements(By.CSS_SELECTOR, selector)
+                st.write(f"Found {len(elements)} elements with selector: {selector}")
+                
+                if elements:
+                    for img in elements:
+                        src = img.get_attribute("src")
+                        if src and src.startswith("https://") and "pixabay.com" in src:
+                            if src not in image_urls:  # Avoid duplicates
+                                image_urls.append(src)
+                    
+                    if image_urls:  # If we found images with this selector, stop trying others
+                        break
+            except Exception as e:
+                st.warning(f"Error with selector {selector}: {e}")
+        
+        # Take a screenshot to debug
+        screenshot_path = "page_screenshot.png"
+        driver.save_screenshot(screenshot_path)
+        
+        if os.path.exists(screenshot_path):
+            st.image(screenshot_path, caption="Screenshot of the search page")
         
         return image_urls[:20]  # Limit to 20 images
     
@@ -74,7 +104,8 @@ def download_image(url):
     """Download an image from a URL and return a PIL Image object"""
     try:
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://pixabay.com/"
         }
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
@@ -95,6 +126,16 @@ if st.button("Search Images") and search_query:
         
         if not image_urls:
             st.warning("No images found. Try a different search term.")
+            st.write("This could be because Pixabay is detecting and blocking the scraper.")
+            st.write("As an alternative, let's try a different approach.")
+            
+            # Suggest alternatives
+            st.info("""
+            **Alternatives:**
+            1. Try using the Pixabay API instead (requires registration but has a free tier)
+            2. Try using a different scraping method with request headers that better mimic a browser
+            3. Consider searching for images on a different site
+            """)
         else:
             st.success(f"Found {len(image_urls)} images")
             
@@ -135,6 +176,6 @@ st.markdown("""
 
 ### Notes:
 - This app is for educational purposes only
+- Web scraping may not always work due to website anti-scraping measures
 - Please respect copyright and usage rights of images
-- Images are saved to a 'downloaded_images' folder in your current directory
 """)
